@@ -6,44 +6,62 @@ on:
       ota_url:
         description: 'Direct Download URL for the OTA zip'
         required: true
-        default: ''
 
 jobs:
-  extract:
+  extract-and-upload:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip unzip
+          sudo apt-get install -y python3-pip unzip jq
           pip3 install payload-dumper
 
-      - name: Download and Extract
+      - name: Process Firmware
         run: |
-          mkdir -p workspace
+          mkdir -p workspace/extracted_images
           cd workspace
-          echo "Downloading file..."
+          
+          echo "Downloading..."
           curl -L -o ota_package.zip "${{ github.event.inputs.ota_url }}"
           
           echo "Unzipping..."
           unzip -o ota_package.zip
           
-          echo "Finding payload.bin..."
-          PAYLOAD_PATH=$(find . -name "payload.bin")
+          PAYLOAD_PATH=$(find . -name "payload.bin" | head -n 1)
           
           if [ -f "$PAYLOAD_PATH" ]; then
-            echo "Running payload_dumper..."
+            echo "Found payload at $PAYLOAD_PATH. Dumping images..."
             payload_dumper --out ./extracted_images --partitions boot,init_boot "$PAYLOAD_PATH"
           else
-            echo "Error: payload.bin not found"
+            echo "Error: payload.bin not found in the ZIP."
             exit 1
           fi
 
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: firmware-images
-          path: workspace/extracted_images/*.img
+      - name: Upload to Gofile
+        run: |
+          # Get available servers
+          SERVER_RESPONSE=$(curl -s https://api.gofile.io/servers)
+          SERVER=$(echo $SERVER_RESPONSE | jq -r '.data.servers[0].name')
+          
+          echo "Uploading to: $SERVER"
+          
+          # Iterate through the images and upload
+          for file in workspace/extracted_images/*.img; do
+            if [ -f "$file" ]; then
+              echo "Uploading $(basename "$file")..."
+              
+              # Upload to the selected server
+              UPLOAD_RESPONSE=$(curl -s -F file=@"$file" "https://$SERVER.gofile.io/contents/uploadFile")
+              
+              # Extract the link
+              DOWNLOAD_LINK=$(echo $UPLOAD_RESPONSE | jq -r '.data.downloadPage')
+              
+              # Output result
+              echo "✅ Success: $(basename "$file")"
+              echo "Link: $DOWNLOAD_LINK"
+            fi
+          done

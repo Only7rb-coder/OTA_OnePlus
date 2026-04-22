@@ -1,1 +1,1 @@
-OTA Downloader & Extractor for OnePlus OTA files
+OTA Downloader & Extractor for OTA files

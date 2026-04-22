@@ -10,6 +10,9 @@ on:
 jobs:
   extract-and-upload:
     runs-on: ubuntu-latest
+    env:
+      # Silences deprecation warnings
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -17,7 +20,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip unzip jq
+          # Installed aria2 for fast multi-threaded downloads
+          sudo apt-get install -y python3-pip unzip jq aria2
           pip3 install payload-dumper
 
       - name: Process Firmware
@@ -25,8 +29,9 @@ jobs:
           mkdir -p workspace/extracted_images
           cd workspace
           
-          echo "Downloading..."
-          curl -L -o ota_package.zip "${{ github.event.inputs.ota_url }}"
+          echo "Downloading with aria2 (multi-threaded)..."
+          # -x 16: Max connections per server, -s 16: Split file into 16 parts
+          aria2c -x 16 -s 16 -o ota_package.zip "${{ github.event.inputs.ota_url }}"
           
           echo "Unzipping..."
           unzip -o ota_package.zip

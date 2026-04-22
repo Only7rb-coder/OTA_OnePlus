@@ -1,4 +1,4 @@
-name: Extract Zip Firmware
+name: Extract needrom Firmware
 
 on:
   workflow_dispatch:
@@ -25,7 +25,6 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          # Removed python3-pip and payload-dumper as they are no longer needed
           sudo apt-get install -y unzip jq aria2 zip
 
       - name: Process Firmware
@@ -33,13 +32,18 @@ jobs:
           mkdir -p workspace/extracted_images
           cd workspace
           
-          # Download
+          # Download with spoofed headers to prevent 403 errors
           if [ "${{ github.event.inputs.downloader }}" == "aria2" ]; then
             echo "Downloading with aria2..."
-            aria2c -x 16 -s 16 -o ota_package.zip "${{ github.event.inputs.ota_url }}"
+            aria2c -x 16 -s 16 \
+              --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" \
+              --referer="https://www.needrom.com/" \
+              -o ota_package.zip "${{ github.event.inputs.ota_url }}"
           else
             echo "Downloading with curl..."
-            curl -L -o ota_package.zip "${{ github.event.inputs.ota_url }}"
+            curl -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" \
+              -e "https://www.needrom.com/" \
+              -o ota_package.zip "${{ github.event.inputs.ota_url }}"
           fi
           
           echo "Unzipping..."
@@ -47,7 +51,6 @@ jobs:
           
           echo "Searching for images..."
           # Find and copy the specific files to our extraction folder
-          # This handles files even if they are in subdirectories
           find . -type f \( -name "boot.img" -o -name "init_boot.img" -o -name "vbmeta.img" \) -exec cp {} extracted_images/ \;
           
           # Check if we actually found files

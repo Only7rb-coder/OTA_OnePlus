@@ -1,0 +1,49 @@
+name: Extract OTA Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      ota_url:
+        description: 'Direct Download URL for the OTA zip'
+        required: true
+        default: ''
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip unzip
+          pip3 install payload-dumper
+
+      - name: Download and Extract
+        run: |
+          mkdir -p workspace
+          cd workspace
+          echo "Downloading file..."
+          curl -L -o ota_package.zip "${{ github.event.inputs.ota_url }}"
+          
+          echo "Unzipping..."
+          unzip -o ota_package.zip
+          
+          echo "Finding payload.bin..."
+          PAYLOAD_PATH=$(find . -name "payload.bin")
+          
+          if [ -f "$PAYLOAD_PATH" ]; then
+            echo "Running payload_dumper..."
+            payload_dumper --out ./extracted_images --partitions boot,init_boot "$PAYLOAD_PATH"
+          else
+            echo "Error: payload.bin not found"
+            exit 1
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-images
+          path: workspace/extracted_images/*.img

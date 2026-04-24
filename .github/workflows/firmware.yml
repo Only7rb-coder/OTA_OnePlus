@@ -31,16 +31,19 @@ jobs:
           
           if [ "${{ github.event.inputs.downloader }}" == "aria2" ]; then
             echo "Downloading with aria2..."
-            # --remote-name uses the filename from the URL/Server
-            aria2c -x 16 -s 16 --remote-name=true "$URL"
+            # Removed --remote-name=true
+            aria2c -x 16 -s 16 "$URL"
           else
             echo "Downloading with curl..."
             # -O uses the filename from the URL, -J uses Content-Disposition headers
             curl -L -O -J "$URL"
           fi
           
-          # Identify the downloaded file (the only file in the workspace excluding logs)
-          FILENAME=$(ls -t | grep -v "0" | head -n 1)
+          # Identify the downloaded file (excluding directories)
+          # ls -tp: sorts by time, p adds / to directories
+          # grep -v /: filters out directories
+          # head -n 1: takes the most recent file
+          FILENAME=$(ls -tp | grep -v / | head -n 1)
           echo "file_name=$FILENAME" >> $GITHUB_OUTPUT
           echo "Detected Filename: $FILENAME"
 

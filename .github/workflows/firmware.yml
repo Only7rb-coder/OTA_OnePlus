@@ -25,17 +25,29 @@ jobs:
           sudo apt-get install -y aria2 jq curl
 
       - name: Download File
+        id: download
         run: |
+          URL="${{ github.event.inputs.ota_url }}"
+          
           if [ "${{ github.event.inputs.downloader }}" == "aria2" ]; then
             echo "Downloading with aria2..."
-            aria2c -x 16 -s 16 -o "transfer_package.zip" "${{ github.event.inputs.ota_url }}"
+            # --remote-name uses the filename from the URL/Server
+            aria2c -x 16 -s 16 --remote-name=true "$URL"
           else
             echo "Downloading with curl..."
-            curl -L -o "transfer_package.zip" "${{ github.event.inputs.ota_url }}"
+            # -O uses the filename from the URL, -J uses Content-Disposition headers
+            curl -L -O -J "$URL"
           fi
+          
+          # Identify the downloaded file (the only file in the workspace excluding logs)
+          FILENAME=$(ls -t | grep -v "0" | head -n 1)
+          echo "file_name=$FILENAME" >> $GITHUB_OUTPUT
+          echo "Detected Filename: $FILENAME"
 
       - name: Upload to Gofile
         run: |
+          FILENAME="${{ steps.download.outputs.file_name }}"
+          
           # 1. Get the best available server
           SERVER_RESPONSE=$(curl -s https://api.gofile.io/servers)
           SERVER=$(echo $SERVER_RESPONSE | jq -r '.data.servers[0].name')
@@ -45,11 +57,10 @@ jobs:
             exit 1
           fi
           
-          echo "Uploading to server: $SERVER"
+          echo "Uploading $FILENAME to server: $SERVER"
           
-          # 2. Upload the file
-          # We use the -# flag in curl to show a simple progress bar in the logs
-          UPLOAD_RESPONSE=$(curl -# -F "file=@transfer_package.zip" "https://$SERVER.gofile.io/contents/uploadFile")
+          # 2. Upload the file using its real name
+          UPLOAD_RESPONSE=$(curl -# -F "file=@$FILENAME" "https://$SERVER.gofile.io/contents/uploadFile")
           
           # 3. Parse and display result
           DOWNLOAD_LINK=$(echo $UPLOAD_RESPONSE | jq -r '.data.downloadPage')
@@ -57,6 +68,7 @@ jobs:
           if [ "$DOWNLOAD_LINK" != "null" ]; then
             echo "------------------------------------------------"
             echo "✅ Upload Complete!"
+            echo "File Name: $FILENAME"
             echo "Download Page: $DOWNLOAD_LINK"
             echo "------------------------------------------------"
           else

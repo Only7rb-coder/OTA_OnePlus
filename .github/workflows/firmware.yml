@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       ota_url:
-        description: 'Direct Download URL for the file'
+        description: 'Direct Download URL or Google Drive URL'
         required: true
       downloader:
-        description: 'Choose download method'
+        description: 'Choose download method (ignored if Google Drive)'
         required: true
         default: 'aria2'
         type: choice
@@ -23,26 +23,27 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y aria2 jq curl
+          # gdown handles the Google Drive virus scan interstitial pages
+          pip install gdown
 
       - name: Download File
         id: download
         run: |
           URL="${{ github.event.inputs.ota_url }}"
           
-          if [ "${{ github.event.inputs.downloader }}" == "aria2" ]; then
+          # Check if URL is a Google Drive link
+          if [[ "$URL" == *"drive.google.com"* ]]; then
+            echo "Google Drive link detected. Using gdown..."
+            gdown "$URL" --fuzzy
+          elif [ "${{ github.event.inputs.downloader }}" == "aria2" ]; then
             echo "Downloading with aria2..."
-            # Removed --remote-name=true
             aria2c -x 16 -s 16 "$URL"
           else
             echo "Downloading with curl..."
-            # -O uses the filename from the URL, -J uses Content-Disposition headers
             curl -L -O -J "$URL"
           fi
           
-          # Identify the downloaded file (excluding directories)
-          # ls -tp: sorts by time, p adds / to directories
-          # grep -v /: filters out directories
-          # head -n 1: takes the most recent file
+          # Identify the downloaded file
           FILENAME=$(ls -tp | grep -v / | head -n 1)
           echo "file_name=$FILENAME" >> $GITHUB_OUTPUT
           echo "Detected Filename: $FILENAME"
@@ -62,7 +63,7 @@ jobs:
           
           echo "Uploading $FILENAME to server: $SERVER"
           
-          # 2. Upload the file using its real name
+          # 2. Upload the file
           UPLOAD_RESPONSE=$(curl -# -F "file=@$FILENAME" "https://$SERVER.gofile.io/contents/uploadFile")
           
           # 3. Parse and display result
